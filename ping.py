@@ -6,6 +6,7 @@ from typing import Optional
 
 # ICMP message types used for identifying reply and destination unreachable packets.
 ICMP_ECHO_REPLY = 0
+ICMP_ECHO_REQUEST = 8
 ICMP_DEST_UNREACHABLE = 3
 
 host = ''  # Stores the IP address or hostname to ping.
@@ -63,7 +64,7 @@ def create_packet(payload_size: int) -> bytes:
     """
     global cmp_seq_number
     cmp_seq_number += 1
-    packet = struct.pack('!BBHHH', 8, 0, 0, 0, cmp_seq_number)  # Create the ICMP header
+    packet = struct.pack('!BBHHH', ICMP_ECHO_REQUEST, 0, 0, 0, cmp_seq_number)  # Create the ICMP header
     data = b'P' * payload_size  # Create the payload data
     packet += data
     checksum = calculate_checksum(packet)
