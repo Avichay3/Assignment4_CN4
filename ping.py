@@ -4,11 +4,12 @@ import time
 import struct
 from typing import Optional
 
+# ICMP message types used for identifying reply and destination unreachable packets.
 ICMP_ECHO_REPLY = 0
 ICMP_DEST_UNREACHABLE = 3
 
-host = ''
-cmp_seq_number = 0
+host = ''  # Stores the IP address or hostname to ping.
+cmp_seq_number = 0  # Stores the current sequence number for ICMP packets.
 
 
 def parse_icmp_packet(packet, address, start_time):
@@ -24,7 +25,10 @@ def parse_icmp_packet(packet, address, start_time):
 
     header_type = packet[20]
     seq = packet[24] * 256 + packet[25]
-
+    # The value 28 is subtracted because ICMP echo reply packets typically
+    # have an ICMP header of 8 bytes and an IP header of 20 bytes.
+    # So, by subtracting the sum of these header lengths from the total packet length,
+    # we get the length of the actual payload or data in the ICMP echo reply packet.
     if header_type == ICMP_ECHO_REPLY:
         packet_length = len(packet) - 28  # Calculate the packet length
         return f'{packet_length} bytes from {address} icmp_seq={int(seq / 256)} ttl={packet[8]}' \
