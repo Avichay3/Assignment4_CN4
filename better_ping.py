@@ -4,18 +4,12 @@ import socket
 import struct
 import select
 import time
-import threading
 
-# Constants
-WATCHDOG_PORT = 3000
-WATCHDOG_IP = 'localhost'
+# ICMP message types
 ICMP_ECHO_REQUEST = 8
+ICMP_ECHO_REPLY = 0
 
-
-def generate_checksum(source_string):
-    """
-    Calculates the ICMP packet checksum
-    """
+def calculate_checksum(source_string):
     sum = 0
     countTo = (len(source_string) // 2) * 2
     count = 0
@@ -39,11 +33,7 @@ def generate_checksum(source_string):
 
     return answer
 
-
-def receive_ping(my_socket, ID, timeout):
-    """
-    Receives ICMP ping reply packet
-    """
+def receive_better_ping_reply(my_socket, ID, timeout):
     timeLeft = timeout
 
     while True:
@@ -51,8 +41,8 @@ def receive_ping(my_socket, ID, timeout):
         ready = select.select([my_socket], [], [], timeLeft)
         select_time = (time.time() - start_select)
 
-        if ready[0] == []:
-            return None
+        if not ready[0]:
+            return
 
         timeReceived = time.time()
         recPacket, addr = my_socket.recvfrom(1024)
@@ -64,36 +54,29 @@ def receive_ping(my_socket, ID, timeout):
             bytesInDouble = struct.calcsize("d")
             timeSent = struct.unpack("d", recPacket[28:28 + bytesInDouble])[0]
             ttl = ord(struct.unpack("c", recPacket[8:9])[0])
-            return timeReceived - timeSent, ttl
+            packet_size = len(recPacket)  # Get packet size
+            return timeReceived - timeSent, ttl, packet_size
 
         timeLeft -= select_time
 
         if timeLeft <= 0:
-            return None
+            return
 
-
-def send_ping(my_socket, dest_addr, ID):
-    """
-    Sends ICMP ping request packet
-    """
+def send_better_ping_request(my_socket, dest_addr, ID, sequence):
     dest_addr = socket.gethostbyname(dest_addr)
 
     my_checksum = 0
 
-    header = struct.pack("bbHHh", ICMP_ECHO_REQUEST, 0, my_checksum, ID, 1)
+    header = struct.pack("bbHHh", ICMP_ECHO_REQUEST, 0, my_checksum, ID, sequence)
     data = struct.pack("d", time.time())
-    my_checksum = generate_checksum(header + data)
+    my_checksum = calculate_checksum(header + data)
 
-    header = struct.pack("bbHHh", ICMP_ECHO_REQUEST, 0, socket.htons(my_checksum), ID, 1)
+    header = struct.pack("bbHHh", ICMP_ECHO_REQUEST, 0, socket.htons(my_checksum), ID, sequence)
     packet = header + data
 
     my_socket.sendto(packet, (dest_addr, 1))
 
-
-def ping(dest_addr, timeout):
-    """
-    Performs the ping operation
-    """
+def perform_better_ping(addr, timeout, sequence):
     icmp = socket.getprotobyname("icmp")
 
     try:
@@ -107,78 +90,33 @@ def ping(dest_addr, timeout):
 
     my_ID = os.getpid() & 0xFFFF
 
-    send_ping(my_socket, dest_addr, my_ID)
-    result = receive_ping(my_socket, my_ID, timeout)
+    send_better_ping_request(my_socket, addr, my_ID, sequence)
+    result = receive_better_ping_reply(my_socket, my_ID, timeout)
 
     my_socket.close()
 
-    if result is None:
-        return None, None
+    return result
 
-    delay, ttl = result
+def better_ping_program():
+    if len(sys.argv) < 2:
+        print("Usage: python better_ping.py <host>")
+        return
 
-    return delay, ttl
+    addr = sys.argv[1]
 
+    sequence = 0  # Initialize sequence number
 
-def reset_watchdog():
-    """
-    Sends a reset message to the watchdog
-    """
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect((WATCHDOG_IP, WATCHDOG_PORT))
-    s.send(bytes('reset', 'utf-8'))
+    while True:
+        sequence += 1  # Increment sequence number
 
-
-def betterping_flow(dest_addr, timeout, watchdog_thread):
-    """
-    The main flow of the betterping program
-    """
-    seq = 1
-
-    while watchdog_thread.is_alive():
-        delay, ttl = ping(dest_addr, timeout)
-        if delay is None:
-            print(f"Request timed out")
+        result = perform_better_ping(addr, 1, sequence)
+        if result is not None:
+            rtt, ttl, packet_size = result
+            print(f"Reply from {addr}: seq_num={sequence}, rtt={rtt:.5f}ms, ttl={ttl}, size={packet_size} bytes")
         else:
-            delay *= 1000
-            print(f"Reply from {dest_addr}: bytes=32 seq={seq} TTL={ttl} time={delay:.3f}ms")
+            print(f"Request timed out: seq={sequence}")
 
-        reset_watchdog()
-
-        seq += 1
         time.sleep(1)
 
-
-def create_watchdog_tcp_socket():
-    """
-    Creates a TCP socket and connects to the watchdog
-    """
-    watchdog_thread = threading.Thread(target=lambda: os.system('py watchdog.py'))
-    watchdog_thread.start()
-
-    # Waits for watchdog's TCP to initialize
-    time.sleep(1)
-
-    return watchdog_thread
-
-
-def betterping_starter():
-    """
-    Starts the betterping program
-    """
-    if len(sys.argv) != 2:
-        print('Usage: python3 better_ping.py <ip>')
-        sys.exit(1)
-
-    dest_addr = sys.argv[1]
-    timeout = 1
-
-    # Creates watchdog thread
-    watchdog_thread = create_watchdog_tcp_socket()
-
-    # Starts the betterping flow
-    betterping_flow(dest_addr, timeout, watchdog_thread)
-
-
-if __name__ == '__main__':
-    betterping_starter()
+if __name__ == "__main__":
+    better_ping_program()
