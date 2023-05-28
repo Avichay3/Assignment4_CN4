@@ -107,9 +107,8 @@ def receive_ping(receive_socket: socket.socket) -> Optional[str]:
 
         if icmp_type == ICMP_ECHO_REPLY:
             packet_length = len(received_packet) - 28  # Calculate packet length
-
-            return f'{packet_length} bytes from {addr[0]} icmp_seq={icmph[4]} ttl={ttl}' \
-                   f' time={(end_time - start_time) * 1000:.3f} ms'
+            elapsed_time = (end_time - start_time) * 1000
+            return f'{packet_length} bytes from {addr[0]} icmp_seq={icmph[4]} ttl={ttl} time={elapsed_time:.3f} ms'
 
         elif icmp_type == ICMP_DEST_UNREACHABLE:
             print(f"Host {host} unreachable")
